@@ -6,11 +6,14 @@
     <title>MyTextChat</title>
 </head>
 <body>
+<input type="text" id="userNameInput" maxlength="10" placeholder="Ваш UserName"><br>
+<button id="userNameBtn">Присоединиться</button><br>
+<br>
 <textarea id="messageLog" rows="10" cols="30" readonly></textarea><br>
-<input type="text" id="messageInput" maxlength="25" placeholder="Введите сообщение..."><br>
-<button id="sendBtn">Отправить</button>
-<p id="connectionStatus"></p> 
+<input type="text" id="messageInput" maxlength="37" placeholder="Введите сообщение..."><br>
+<button id="sendMessageBtn">Отправить</button>
+<p id="connectionStatus"></p>
 
-    <script src="chat.js"></script>
+<script src="chat.js"></script>
 </body>
 </html>
