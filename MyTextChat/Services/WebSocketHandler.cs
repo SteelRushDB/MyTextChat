@@ -53,9 +53,11 @@ public class WebSocketHandler
     public async Task HandleJoinChat(JoinChatRequest request, WebSocket webSocket)
     {
         var name = request.Name;
-        if (name == null) await SendError("Bad Request: Не был введен UserName", "joinChat", webSocket);
-        
-        if (!_connectedUsers.ContainsKey(name))
+        if (name == null)
+        {
+            await SendError("Bad Request: Не был введен UserName", "joinChat", webSocket);
+        }
+        else if (!_connectedUsers.ContainsKey(name))
         {
             _connectedUsers[name] = webSocket;
 
@@ -85,24 +87,24 @@ public class WebSocketHandler
             Target = request.ChatMessage.Target
         };
         
-        if (response.Target != null)
+        if (response.Target == null)
         {
-            var targetClient = _connectedUsers[response.Target];
-            if (targetClient == null)
-            {
-                await SendError($"В чате нет пользователя с именем {response.Target}", "sendPrivateMessage",webSocket);
-            }
-            else
-            {
-                var messageBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(response));
-                await targetClient.SendAsync(new ArraySegment<byte>(messageBytes), 
-                    WebSocketMessageType.Text, true, CancellationToken.None); 
-                // !Важно! Отправляем ответ конкретному targetClient
-            }
+            await SendError($"Bad Request: В приватном сообщении не оказалось получателя", "sendPrivateMessage", webSocket);
+        }
+        else if (string.IsNullOrWhiteSpace(response.Text))
+        {
+            await SendError($"Текст не может быть пустым", "sendPrivateMessage",webSocket);
+        }
+        else if (!_connectedUsers.TryGetValue(response.Target, out WebSocket? targetClient))
+        {
+            await SendError($"В чате нет пользователя с именем {response.Target}", "sendPrivateMessage",webSocket);
         }
         else
         {
-            await SendError($"Bad Request: В приватном сообщении не оказалось получателя", "sendPrivateMessage", webSocket);
+            var messageBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(response));
+            await targetClient.SendAsync(new ArraySegment<byte>(messageBytes), 
+                WebSocketMessageType.Text, true, CancellationToken.None); 
+            // !Важно! Отправляем ответ конкретному targetClient
         }
     }
 
@@ -116,17 +118,25 @@ public class WebSocketHandler
             Source = request.ChatMessage.Source,
         };
         
-        foreach (var client in Clients)
+        if (string.IsNullOrWhiteSpace(response.Text))
         {
-            if (client.State == WebSocketState.Open)
+            await SendError($"Текст не может быть пустым", "sendPrivateMessage",webSocket);
+        }
+        else
+        {
+            foreach (var client in Clients)
             {
-                var messageBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(response));
-                await client.SendAsync(new ArraySegment<byte>(messageBytes), 
-                    WebSocketMessageType.Text, true, CancellationToken.None);
-                // !Важно! Отправляем ответ каждому client
+                if (client.State == WebSocketState.Open)
+                {
+                    var messageBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(response));
+                    await client.SendAsync(new ArraySegment<byte>(messageBytes), 
+                        WebSocketMessageType.Text, true, CancellationToken.None);
+                    // !Важно! Отправляем ответ каждому client
+                }
             }
         }
     }
+    
     
     //Метод отправки ошибки
     public async Task SendError(string text, string sourceCommand, WebSocket webSocket)

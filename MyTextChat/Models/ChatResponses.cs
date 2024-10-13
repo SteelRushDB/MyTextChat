@@ -17,6 +17,6 @@ public class SendMessageResponse
 public class ErrorResponse
 {
     public string Command { get; set; } = "error";
-    public string ErrorText { get; set; } = "Unknown Error";
-    public string SourceCommand { get; set; } = "Unknown reason";
+    public string ErrorText { get; set; }
+    public string SourceCommand { get; set; }
 }

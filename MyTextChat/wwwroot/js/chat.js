@@ -11,126 +11,123 @@ const connectionStatus = document.getElementById('connectionStatus')
 
 let reconnectInterval; 
 let countdown;
-let socket = null; 
+let socket = new WebSocket("ws://localhost:5232/ws");
+console.log("Соединение установлено.");
 
+userNameInput.disabled = false;
+userNameBtn.disabled = false;
+sendMessageBtn.disabled = true;
+messageInput.disabled = true;
 
-function userNameEnter(){
-    userNameBtn.addEventListener('click', function(){
-        if (userNameInput.value !== ''){
-            tryConnect();
-        }
-    })
-    
-}
-
-
-function tryConnect() {
-    //TODO сделать правильную обработку неверного входа
-    socket = new WebSocket("ws://localhost:5232/ws");
-    
-    
-    socket.onopen = function() {
-        console.log("Соединение установлено.");
-        
+userNameBtn.addEventListener('click', function(){
+    if (userNameInput.value !== ''){
         const joinChatRequest = {
             Command: "joinChat",
             Name: userNameInput.value
         }
         socket.send(JSON.stringify(joinChatRequest));
+    }
+})
+
+socket.onopen = function() {
+    console.log("Соединение установлено.");
+    connectionStatus.textContent = "Соединение установлено."; // Обновляем статус
+    clearInterval(reconnectInterval);
+    connectionStatus.textContent = "";
+};
+
+socket.onmessage = function(event) {
+    let data = JSON.parse(event.data);
+
+    if (data.Command === "history") {
+        data.ChatHistory.forEach(msg => {
+            let message = `${msg.Source}: ${msg.Text}`;
+            messageLog.value += message + '\n';
+        });
         
         userNameInput.disabled = true;
         userNameBtn.disabled = true;
         sendMessageBtn.disabled = false;
         messageInput.disabled = false;
-    };
+    }
 
-    socket.onmessage = function(event) {
-        let data = JSON.parse(event.data);
+    if (data.Command === "receiveMessage") {
+        let message;
 
-        if (data.Command === "history") {
-            data.ChatHistory.forEach(msg => {
-                let message = `${msg.Source}: ${msg.Text}`;
-                messageLog.value += message + '\n';
-            });
+        if (data.Target !== null) {
+            message = `@Private From ${data.Source} to ${data.Target}: ${data.Text}`;
+        } else {
+            message = `${data.Source}: ${data.Text}`;
         }
 
-        if (data.Command === "receiveMessage") {
-            let message;
+        messageLog.value += message + '\n'
+    }
 
-            if (data.Target !== null) {
-                message = `@Private From ${data.Source} to ${data.Target}: ${data.Text}`;
-            } else {
-                message = `${data.Source}: ${data.Text}`;
+    if (data.Command === "error") {
+        connectionStatus.textContent = `Ошибка в ${data.SourceCommand}: ${data.ErrorText}`;
+
+        if (data.SourceCommand === "joinChat"){
+            userNameInput.disabled = false;
+            userNameBtn.disabled = false;
+            sendMessageBtn.disabled = true;
+            messageInput.disabled = true;
+        }
+    }
+
+};
+
+socket.onclose = function(event) {
+    console.log("Соединение потеряно. Повторная попытка через 10 секунд...");
+    userNameInput.disabled = true;
+    userNameBtn.disabled = true;
+    sendMessageBtn.disabled = true;
+    messageInput.disabled = true;
+
+    startReconnectCountdown(10);
+};
+
+sendMessageBtn.addEventListener('click', function() {
+    if (socket.readyState === WebSocket.OPEN) {
+        const message = messageInput.value;
+
+        if (message.startsWith('@')){
+            const parts = message.split(' ');
+            const target = parts[0].substring(1);
+            const text = parts.slice(1).join(' ');
+
+            const chatMessage = {
+                Source: userNameInput.value,
+                Target: target,
+                Text: text
             }
 
-            messageLog.value += message + '\n'
+            const privateMessageRequest = {
+                Command: "sendPrivateMessage",
+                ChatMessage: chatMessage
+            }
+
+            socket.send(JSON.stringify(privateMessageRequest));
         }
 
-        if (data.Command === "error") {
-            // Показ ошибки, включая исходную команду
-            connectionStatus.textContent = `Ошибка в ${data.SourceCommand}: ${data.ErrorText}`;
-            
-            if (data.SourceCommand === "joinChat"){
-                userNameInput.disabled = false;
-                userNameBtn.disabled = false;
-                sendMessageBtn.disabled = true;
-                messageInput.disabled = true;
+        else {
+            const chatMessage = {
+                Source: userNameInput.value,
+                Target: null,
+                Text: message
             }
+
+            const publicMessageRequest = {
+                Command: "sendPublicMessage",
+                ChatMessage: chatMessage
+            }
+
+            socket.send(JSON.stringify(publicMessageRequest));
         }
-        
-    };
+        messageInput.value = '';
+    }
+});
+    
 
-    socket.onclose = function(event) {
-        console.log("Соединение потеряно. Повторная попытка через 10 секунд...");
-        userNameInput.disabled = true;
-        userNameBtn.disabled = true;
-        sendMessageBtn.disabled = true;
-        messageInput.disabled = true;
-        
-        startReconnectCountdown(10);
-    };
-
-    sendMessageBtn.addEventListener('click', function() {
-        if (socket.readyState === WebSocket.OPEN) {
-            const message = messageInput.value;
-            
-            if (message.startsWith('@')){
-                const parts = message.split(' ');
-                const target = parts[0].substring(1);
-                const text = parts.slice(1).join(' ');
-                
-                const chatMessage = {
-                    Source: userNameInput.value,
-                    Target: target,
-                    Text: text
-                }
-                
-                const privateMessageRequest = {
-                    Command: "sendPrivateMessage",
-                    ChatMessage: chatMessage
-                }
-                
-                socket.send(JSON.stringify(privateMessageRequest));
-            }
-            
-            else {
-                const chatMessage = {
-                    Source: userNameInput.value,
-                    Target: null,
-                    Text: message
-                }
-
-                const publicMessageRequest = {
-                    Command: "sendPublicMessage",
-                    ChatMessage: chatMessage
-                }
-
-                socket.send(JSON.stringify(publicMessageRequest));
-            }
-            messageInput.value = '';
-        }
-    });
-}
 
 function startReconnectCountdown(seconds) {
     countdown = seconds;
@@ -145,13 +142,9 @@ function startReconnectCountdown(seconds) {
             connectionStatus.textContent = `Попытка подключения...`;
             
             clearInterval(reconnectInterval);
-            tryConnect();
+            socket = new WebSocket("ws://localhost:5232/ws");
         }
     }, 1000);
 }
 
 
-sendMessageBtn.disabled = true;
-messageInput.disabled = true;
-
-userNameEnter()
